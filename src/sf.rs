@@ -4,6 +4,8 @@ use eyre::bail;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SF {
+    SF01,
+    SF02,
     SF1,
     SF2,
     SF3,
@@ -16,6 +18,8 @@ impl FromStr for SF {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
+            "01" | "SF01" => SF::SF01,
+            "02" | "SF02" => SF::SF02,
             "1" | "SF1" => SF::SF1,
             "2" | "SF2" => SF::SF2,
             "3" | "SF3" => SF::SF3,
@@ -32,11 +36,13 @@ impl Display for SF {
             f,
             "{}",
             match self {
-                SF::SF1 => 1,
-                SF::SF2 => 2,
-                SF::SF3 => 3,
-                SF::SF4 => 4,
-                SF::SF5 => 5,
+                SF::SF01 => "01",
+                SF::SF02 => "02",
+                SF::SF1 => "1",
+                SF::SF2 => "2",
+                SF::SF3 => "3",
+                SF::SF4 => "4",
+                SF::SF5 => "5",
             }
         )
     }
