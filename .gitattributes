@@ -1,0 +1,1 @@
+test/stv_all.bed.gz filter=lfs diff=lfs merge=lfs -text

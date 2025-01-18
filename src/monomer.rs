@@ -1,0 +1,424 @@
+use std::fmt::Display;
+use std::str::FromStr;
+
+use eyre::{bail, ContextCompat};
+use itertools::Itertools;
+
+use crate::chrom::Chromosome;
+use crate::sf::SF;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Status {
+    Live,
+    Divergent
+}
+
+impl FromStr for Status {
+    type Err = eyre::Error;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "L" | "live" => Status::Live,
+            "d" | "divergent" => Status::Divergent,
+            _ => bail!("Invalid status, {s}.")
+        })
+    }
+}
+
+impl TryFrom<char> for Status {
+    type Error = eyre::Error;
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        Ok(match value {
+            'L' => Status::Live,
+            'd' => Status::Divergent,
+            _ => bail!("Invalid status, {value}.")
+        })
+    }
+}
+
+/// An alpha-satellite higher-order repeat monomer.
+/// 
+/// ```
+/// let mon = Monomer::new("S1C16H1L.2")
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Monomer {
+    monomer_1: u8,
+    monomer_2: Option<u8>,
+    suprachromosomal_family: SF,
+    chromosomes: Vec<Chromosome>,
+    monomer_type: MonomerType,
+    monomer_type_desc: Option<char>,
+    status: Option<Status>,
+}
+
+impl Monomer {
+    pub fn new(s: &str) -> eyre::Result<Self> {
+        Monomer::from_str(s)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Token {
+    SF,
+    Chrom,
+    Monomer,
+    Divergent,
+    Live,
+    Number,
+    Delimiter,
+    Hyphen,
+    Value(char)
+}
+
+impl Token {
+    fn char(&self) -> char {
+        match self {
+            Token::SF => 'S',
+            Token::Chrom => 'C',
+            Token::Number => 'n',
+            Token::Divergent => 'd',
+            Token::Live => 'L',
+            Token::Monomer => '.',
+            Token::Delimiter => '/',
+            Token::Hyphen => '-',
+            Token::Value(value) => *value
+        }
+    }
+}
+
+impl From<char> for Token {
+    fn from(value: char) -> Self {
+        match value {
+            'S' => Token::SF,
+            'C' => Token::Chrom,
+            '0'..='9' => Token::Number,
+            'd' => Token::Divergent,
+            'L' => Token::Live,
+            '.' => Token::Monomer,
+            '/' => Token::Delimiter,
+            '-' => Token::Hyphen,
+            _ => Token::Value(value)
+        }
+    }
+}
+
+impl FromStr for Monomer {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut monomer_1: Option<u8> = None;
+        let mut monomer_2: Option<u8> = None;
+        let mut suprachromosomal_family: Option<SF> = None;
+        let mut chromosomes: Vec<Chromosome> = vec![];
+        let mut monomer_type: Option<MonomerType> = None;
+        let mut monomer_type_desc: Option<char> = None;
+        let mut status: Option<Status> = None;
+
+        let mut current_attr: Option<Token> = None;
+
+        for (token, grps) in &s.chars().chunk_by(|c| Token::from(*c)) {
+            // Allow hyphen through.
+            if current_attr == Some(Token::Hyphen) {
+                monomer_type_desc = Some(token.char());
+            }
+            
+            if token == Token::Delimiter {
+                continue;
+            } else if token == Token::Divergent || token == Token::Live {
+                status = Some(Status::try_from(token.char())?);
+                continue;
+            } else if token != Token::Number {
+                current_attr = Some(token);
+                continue;
+            }
+
+            let mut val = String::from_iter(grps);
+            match &current_attr {
+                Some(Token::SF) => {
+                    suprachromosomal_family = Some(SF::from_str(&val)?);
+                }
+                Some(Token::Chrom) => chromosomes.push(Chromosome::from_str(&val)?),
+                // Treat as monomer type.
+                Some(Token::Value(attr)) => {
+                    // Add attribute
+                    val.insert(0, *attr);
+                    monomer_type = Some(MonomerType::from_str(&val)?);
+                }
+                // If not live.
+                Some(Token::Monomer) => {
+                    // Add monomer. 
+                    // Only allow two.
+                    match (monomer_1, monomer_2) {
+                        (None, None) => {
+                            monomer_1 = Some(u8::from_str(&val)?);
+                        },
+                        (None, Some(_)) => unreachable!(),
+                        (Some(_), None) => {
+                            monomer_2 = Some(u8::from_str(&val)?)
+                        },
+                        (Some(_), Some(_)) => {
+                            bail!("Invalid monomer, {s}. More than 2 monomers found.")
+                        },
+                    }
+                },
+                Some(Token::Hyphen) | Some(Token::Delimiter) | Some(Token::Number) | Some(Token::Live) | Some(Token::Divergent) => {
+                    unreachable!()
+                }
+                None => {
+                    bail!("Monomer doesn't start with an attribute. Staring characters: {val}")
+                }
+            }
+        }
+        
+        Ok(Monomer {
+            monomer_1: monomer_1.context("Value required.")?,
+            monomer_2,
+            suprachromosomal_family: suprachromosomal_family.context("SF required.")?,
+            chromosomes,
+            monomer_type: monomer_type.context("Monomer type required.")?,
+            monomer_type_desc,
+            status,
+        })
+    }
+}
+
+impl Display for Monomer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let status = match self.status {
+            Some(Status::Live) => "L",
+            Some(Status::Divergent) => "d",
+            None => "",
+        };
+        let monomer_2 = self.monomer_2.map(|m2| format!("/{m2}")).unwrap_or_default();
+        let monomer_type_desc = self.monomer_type_desc.map(|desc| format!("-{desc}")).unwrap_or_default();
+        let chromosomes = self.chromosomes.iter().join("/");
+        write!(
+            f,
+            "S{}C{}{:?}{monomer_type_desc}{status}.{}{monomer_2}",
+            self.suprachromosomal_family, chromosomes, self.monomer_type, self.monomer_1
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MonomerType {
+    J1,
+    J2,
+    D1,
+    D2,
+    W1,
+    W2,
+    W3,
+    W4,
+    W5,
+    R1,
+    R2,
+    M1,
+    V1,
+    H1,
+    H2,
+    H3,
+    H4,
+    H5,
+    H6,
+    H7,
+    H8,
+}
+
+impl FromStr for MonomerType {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "J1" => MonomerType::J1,
+            "J2" => MonomerType::J2,
+            "D1" => MonomerType::D1,
+            "D2" => MonomerType::D2,
+            "W1" => MonomerType::W1,
+            "W2" => MonomerType::W2,
+            "W3" => MonomerType::W3,
+            "W4" => MonomerType::W4,
+            "W5" => MonomerType::W5,
+            "R1" => MonomerType::R1,
+            "R2" => MonomerType::R2,
+            "M1" => MonomerType::M1,
+            "V1" => MonomerType::V1,
+            "H1" => MonomerType::H1,
+            "H2" => MonomerType::H2,
+            "H3" => MonomerType::H3,
+            "H4" => MonomerType::H4,
+            "H5" => MonomerType::H5,
+            "H6" => MonomerType::H6,
+            "H7" => MonomerType::H7,
+            "H8" => MonomerType::H8,
+            _ => bail!("Unknown monomer type, {s}."),
+        })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{monomer::{Monomer, MonomerType, Status}, chrom::Chromosome, sf::SF};
+
+    #[test]
+    fn test_invalid_mon() {
+        const MON_NO_REQ_ATTR: &str = "S1";
+        // Doesn't start with an attribute
+        const MON_NO_START_ATTR: &str = "1C16H1.2";
+
+        assert!(Monomer::new(MON_NO_REQ_ATTR).is_err());
+        assert!(Monomer::new(MON_NO_START_ATTR).is_err());
+    }
+
+    #[test]
+    fn test_live_mon() {
+        const MON_LIVE: &str = "S1C16H1L.2";
+        assert_eq!(
+            Monomer {
+                monomer_1: 2,
+                monomer_2: None,
+                suprachromosomal_family: SF::SF1,
+                chromosomes: vec![
+                    Chromosome::C16,
+                ],
+                monomer_type: MonomerType::H1,
+                monomer_type_desc: None,
+                status: Some(
+                    Status::Live,
+                ),
+            },
+            Monomer::new(MON_LIVE).unwrap()
+        )
+    }
+
+    #[test]
+    fn test_nonlive_mon() {
+        const MON_NON_LIVE: &str = "S4C20H7.11";
+        assert_eq!(
+            Monomer {
+                monomer_1: 11,
+                monomer_2: None,
+                suprachromosomal_family: SF::SF4,
+                chromosomes: vec![
+                    Chromosome::C20,
+                ],
+                monomer_type: MonomerType::H7,
+                monomer_type_desc: None,
+                status: None,
+            },
+            Monomer::new(MON_NON_LIVE).unwrap()
+        )
+
+    }
+
+    #[test]
+    fn test_div_mon() {
+        const MON_DIV: &str = "S5C1H6d.1";
+        assert_eq!(
+            Monomer {
+                monomer_1: 1,
+                monomer_2: None,
+                suprachromosomal_family: SF::SF5,
+                chromosomes: vec![
+                    Chromosome::C1,
+                ],
+                monomer_type: MonomerType::H6,
+                monomer_type_desc: None,
+                status: Some(
+                    Status::Divergent,
+                ),
+            },
+            Monomer::new(MON_DIV).unwrap()
+        )
+    }
+
+    #[test]
+    fn test_mon_chimeric() {
+        const MON_CHIMERIC: &str = "S2C2H1L.3/1";
+        assert_eq!(
+            Monomer {
+                monomer_1: 3,
+                monomer_2: Some(
+                    1,
+                ),
+                suprachromosomal_family: SF::SF2,
+                chromosomes: vec![
+                    Chromosome::C2,
+                ],
+                monomer_type: MonomerType::H1,
+                monomer_type_desc: None,
+                status: Some(
+                    Status::Live,
+                ),
+            },
+            Monomer::new(MON_CHIMERIC).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_hyphen_mon_type() {
+        const MON_HYPHEN_1: &str = "S3C1H2-B.4";
+        const MON_HYPHEN_2: &str = "S2C2H2-C.6";
+        assert_eq!(
+            Monomer {
+                monomer_1: 4,
+                monomer_2: None,
+                suprachromosomal_family: SF::SF3,
+                chromosomes: vec![
+                    Chromosome::C1,
+                ],
+                monomer_type: MonomerType::H2,
+                monomer_type_desc: Some(
+                    'B',
+                ),
+                status: None,
+            },
+            Monomer::new(MON_HYPHEN_1).unwrap()
+        );
+        assert_eq!(
+            Monomer {
+                monomer_1: 6,
+                monomer_2: None,
+                suprachromosomal_family: SF::SF2,
+                chromosomes: vec![
+                    Chromosome::C2,
+                ],
+                monomer_type: MonomerType::H2,
+                monomer_type_desc: Some(
+                    'C',
+                ),
+                status: None,
+            },
+            Monomer::new(MON_HYPHEN_2).unwrap()
+        );
+
+    
+    }
+
+    #[test]
+    fn test_ambig_mon() {
+        const MON_AMBIG: &str = "S1C1/5/19H1L.6/4";
+        assert_eq!(
+            Monomer {
+                monomer_1: 6,
+                monomer_2: Some(
+                    4,
+                ),
+                suprachromosomal_family: SF::SF1,
+                chromosomes: vec![
+                    Chromosome::C1,
+                    Chromosome::C5,
+                    Chromosome::C19,
+                ],
+                monomer_type: MonomerType::H1,
+                monomer_type_desc: None,
+                status: Some(
+                    Status::Live,
+                ),
+            },
+            Monomer::new(MON_AMBIG).unwrap()
+        );
+    }
+}
