@@ -1,4 +1,8 @@
-use std::{fmt::Display, ops::Range, str::FromStr};
+use std::{
+    fmt::Display,
+    ops::{Deref, Range},
+    str::FromStr,
+};
 
 use eyre::bail;
 use itertools::Itertools;
@@ -143,7 +147,7 @@ impl FromStr for HOR {
                         let new_range = range.end.saturating_sub(1)..range.start + 1;
                         // First reverse to make range iterable.
                         // Second reverse to restore order.
-                        new_monomers.extend(new_range.rev().map(fn_get_new_mon).rev())
+                        new_monomers.extend(new_range.rev().map(fn_get_new_mon))
                     } else {
                         new_monomers.extend(range.clone().map(fn_get_new_mon))
                     }
@@ -178,6 +182,12 @@ impl HOR {
     /// ```
     pub fn new(s: &str) -> eyre::Result<Self> {
         HOR::from_str(s)
+    }
+
+    /// Geneate a new [`HOR`] from monomers.
+    pub fn from_monomers(_monomers: &[Monomer]) -> Self {
+        // impl from iter.
+        todo!()
     }
 
     /// Generate the reversed version of this [`HOR`].
@@ -223,6 +233,24 @@ impl HOR {
     }
 }
 
+// https://stackoverflow.com/a/70547964
+impl IntoIterator for HOR {
+    type Item = Monomer;
+    type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.monomers.into_iter()
+    }
+}
+
+impl Deref for HOR {
+    type Target = [Monomer];
+
+    fn deref(&self) -> &[Monomer] {
+        &self.monomers[..]
+    }
+}
+
 impl Display for HOR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Some(mon_1) = self.monomers.first() else {
@@ -260,6 +288,8 @@ impl Display for HOR {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
+
     use crate::hor::HOR;
 
     #[test]
@@ -319,5 +349,22 @@ mod test {
         let res = HOR::new(HOR_CHIM).unwrap();
         let rev_res = res.reversed();
         assert_eq!(format!("{rev_res}"), "S4CYH1L.1-15_26-31_32/31_34/32_35-46");
+    }
+
+    #[test]
+    fn test_iter_hor_stv() {
+        const HOR_SIMPLE: &str = "S01/1C3H1L.11-6";
+        let res = HOR::new(HOR_SIMPLE).unwrap();
+        assert_eq!(
+            res.iter().map(|m| format!("{m}")).collect_vec(),
+            [
+                "S01/1C3H1L.11",
+                "S01/1C3H1L.10",
+                "S01/1C3H1L.9",
+                "S01/1C3H1L.8",
+                "S01/1C3H1L.7",
+                "S01/1C3H1L.6",
+            ]
+        )
     }
 }
