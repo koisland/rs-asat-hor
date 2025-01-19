@@ -166,6 +166,8 @@ impl HOR {
     /// Generate a new [`HOR`] from an input string.
     ///
     /// ```
+    /// use rs_asat_hor::HOR;
+    ///
     /// let hor = HOR::new("S01/1C3H1L.11-6").unwrap();
     /// ```
     pub fn new(s: &str) -> eyre::Result<Self> {
@@ -175,6 +177,8 @@ impl HOR {
     /// Generate the reversed version of this [`HOR`].
     ///
     /// ```
+    /// use rs_asat_hor::HOR;
+    ///
     /// let hor = HOR::new("S01/1C3H1L.11-6").unwrap();
     /// let rev_hor = hor.reversed();
     /// ```
@@ -300,6 +304,6 @@ mod test {
         const HOR_CHIM: &str = "S4CYH1L.46-35_32/34_31/32_31-26_15-1";
         let res = HOR::new(HOR_CHIM).unwrap();
         let rev_res = res.reversed();
-        assert_eq!(format!("{rev_res}"), "S4CH1L.1-15_26-31_32/31_34/32_35-46");
+        assert_eq!(format!("{rev_res}"), "S4CYH1L.1-15_26-31_32/31_34/32_35-46");
     }
 }

@@ -48,7 +48,9 @@ impl TryFrom<char> for Status {
 /// An alpha-satellite higher-order repeat monomer.
 ///
 /// ```
-/// let mon = Monomer::new("S1C16H1L.2")
+/// use rs_asat_hor::Monomer;
+///
+/// let mon = Monomer::new("S1C16H1L.2");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Monomer {
@@ -74,6 +76,7 @@ enum Token {
     Monomer,
     Divergent,
     Live,
+    MType,
     Number,
     Chimera,
     Hyphen,
@@ -88,6 +91,7 @@ impl Token {
             Token::Number => 'n',
             Token::Divergent => 'd',
             Token::Live => 'L',
+            Token::MType => 'H',
             Token::Monomer => '.',
             Token::Chimera => '/',
             Token::Hyphen => '-',
@@ -101,6 +105,7 @@ impl From<char> for Token {
         match value {
             'S' => Token::SF,
             'C' => Token::Chrom,
+            'H' => Token::MType,
             '0'..='9' => Token::Number,
             'd' => Token::Divergent,
             'L' => Token::Live,
@@ -124,61 +129,109 @@ impl FromStr for Monomer {
         let mut monomer_type_desc: Option<char> = None;
         let mut status: Option<Status> = None;
 
-        let mut current_attr: Option<Token> = None;
+        // Create peekable iterator.
+        let tokens = &s.chars().chunk_by(|c| Token::from(*c));
+        let mut tokens_iter = tokens.into_iter().peekable();
 
-        for (token, grps) in &s.chars().chunk_by(|c| Token::from(*c)) {
-            // Allow hyphen through.
-            if current_attr == Some(Token::Hyphen) {
-                monomer_type_desc = Some(token.char());
-            }
-
-            if token == Token::Chimera {
-                continue;
-            } else if token == Token::Divergent || token == Token::Live {
-                status = Some(Status::try_from(token.char())?);
-                continue;
-            } else if token != Token::Number {
-                current_attr = Some(token);
-                continue;
-            }
-
-            let mut val = String::from_iter(grps);
-            match &current_attr {
-                Some(Token::SF) => {
-                    suprachromosomal_family.push(SF::from_str(&val)?);
-                }
-                // TODO: Fix chrX, Y, and M
-                Some(Token::Chrom) => chromosomes.push(Chromosome::from_str(&val)?),
-                // Treat as monomer type.
-                Some(Token::Value(attr)) => {
-                    // Add attribute
-                    val.insert(0, *attr);
-                    monomer_type = Some(MonomerType::from_str(&val)?);
-                }
-                // If not live.
-                Some(Token::Monomer) => {
-                    // Add monomer.
-                    // Only allow two.
-                    match (monomer_1, monomer_2) {
-                        (None, None) => {
-                            monomer_1 = Some(u8::from_str(&val)?);
+        while let Some((token, values)) = tokens_iter.next() {
+            match token {
+                Token::SF => {
+                    while let Some((tk, sf_values)) =
+                        tokens_iter.next_if(|(tk, _)| *tk == Token::Number || *tk == Token::Chimera)
+                    {
+                        // Skip / in 1/01
+                        if tk == Token::Chimera {
+                            continue;
                         }
-                        (None, Some(_)) => unreachable!(),
-                        (Some(_), None) => monomer_2 = Some(u8::from_str(&val)?),
-                        (Some(_), Some(_)) => {
-                            bail!("Invalid monomer, {s}. More than 2 monomers found.")
-                        }
+                        let sf_str = String::from_iter(sf_values);
+                        suprachromosomal_family.push(SF::from_str(&sf_str)?);
                     }
                 }
-                Some(Token::Hyphen)
-                | Some(Token::Chimera)
-                | Some(Token::Number)
-                | Some(Token::Live)
-                | Some(Token::Divergent) => {
-                    unreachable!()
+                Token::Chrom => {
+                    while let Some((tk, chr_values)) = tokens_iter.next_if(|(tk, _)| {
+                        let tk_is_num = *tk == Token::Number;
+                        let tk_is_alpha = std::mem::discriminant(tk)
+                            == std::mem::discriminant(&Token::Value('a'));
+                        let tk_is_delim = *tk == Token::Chimera;
+                        tk_is_alpha || tk_is_num || tk_is_delim
+                    }) {
+                        // Skip / in cases like 1/5/19
+                        if tk == Token::Chimera {
+                            continue;
+                        }
+                        let chrom_str = String::from_iter(chr_values);
+                        chromosomes.push(Chromosome::from_str(&chrom_str)?);
+                    }
                 }
-                None => {
-                    bail!("Monomer doesn't start with an attribute. Staring characters: {val}")
+                Token::Monomer => {
+                    let Some((_, mon_values)) = tokens_iter.next_if(|(tk, _)| *tk == Token::Number)
+                    else {
+                        bail!("No numeric value after '.'");
+                    };
+                    let mon1_str = String::from_iter(mon_values);
+                    monomer_1 = Some(u8::from_str(&mon1_str)?);
+
+                    let Some(_) = tokens_iter.next_if(|(tk, _)| *tk == Token::Chimera) else {
+                        continue;
+                    };
+                    let Some((_, mon_2_values)) =
+                        tokens_iter.next_if(|(tk, _)| *tk == Token::Number)
+                    else {
+                        bail!(
+                            "Unexpected token, {:?}, after chimeric monomer delimiter.",
+                            tokens_iter
+                                .next()
+                                .map(|(_, tk_vals)| tk_vals.into_iter().join(","))
+                        );
+                    };
+                    let mon2_str = String::from_iter(mon_2_values);
+                    monomer_2 = Some(u8::from_str(&mon2_str)?);
+                }
+                Token::Live | Token::Divergent => {
+                    status = Some(Status::try_from(token.char())?);
+                }
+                Token::MType => {
+                    // Take num
+                    let Some((_, mtype_vals)) = tokens_iter.next_if(|(tk, _)| *tk == Token::Number)
+                    else {
+                        bail!(
+                            "Unexpected token, {:?}, after chimeric monomer delimiter.",
+                            tokens_iter
+                                .next()
+                                .map(|(_, tk_vals)| tk_vals.into_iter().join(","))
+                        )
+                    };
+                    let mut mtype = String::from_iter(mtype_vals);
+                    mtype.insert(0, 'H');
+                    monomer_type = Some(MonomerType::from_str(&mtype)?);
+
+                    // Hyphen found. Is commented.
+                    let Some(_) = tokens_iter.next_if(|(tk, _)| *tk == Token::Hyphen) else {
+                        continue;
+                    };
+                    // For mtype comment.
+                    let Some((desc_token, _)) = tokens_iter.next_if(|(tk, _)| {
+                        std::mem::discriminant(tk) == std::mem::discriminant(&Token::Value('a')) ||
+                        // Edge case since C can be chrom or a comment.
+                        tk.char() == 'C'
+                    }) else {
+                        bail!(
+                            "Unexpected token, {:?}, after monomer type hyphen delimiter.",
+                            tokens_iter
+                                .next()
+                                .map(|(_, tk_vals)| tk_vals.into_iter().join(","))
+                        )
+                    };
+                    monomer_type_desc = Some(desc_token.char())
+                }
+                Token::Hyphen | Token::Number | Token::Chimera => {
+                    bail!(
+                        "Invalid monomer str, {s}. Unconsumed token, {}.",
+                        values.into_iter().join(",")
+                    )
+                }
+                Token::Value(v) => {
+                    bail!("Invalid monomer str, {s}. Unknown character, {v}.")
                 }
             }
         }
@@ -361,6 +414,23 @@ mod test {
     }
 
     #[test]
+    fn test_nonnumber_chrom_mon() {
+        const MON: &str = "S4CYH1L.46";
+        assert_eq!(
+            Monomer {
+                monomer_1: 46,
+                monomer_2: None,
+                suprachromosomal_family: vec![SF::SF4],
+                chromosomes: vec![Chromosome::CY],
+                monomer_type: MonomerType::H1,
+                monomer_type_desc: None,
+                status: Some(Status::Live),
+            },
+            Monomer::new(MON).unwrap()
+        )
+    }
+
+    #[test]
     fn test_live_mon() {
         const MON_LIVE: &str = "S1C16H1L.2";
         assert_eq!(
@@ -368,10 +438,10 @@ mod test {
                 monomer_1: 2,
                 monomer_2: None,
                 suprachromosomal_family: vec![SF::SF1],
-                chromosomes: vec![Chromosome::C16,],
+                chromosomes: vec![Chromosome::C16],
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
-                status: Some(Status::Live,),
+                status: Some(Status::Live),
             },
             Monomer::new(MON_LIVE).unwrap()
         )
@@ -469,7 +539,7 @@ mod test {
                 chromosomes: vec![Chromosome::C1, Chromosome::C5, Chromosome::C19],
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
-                status: Some(Status::Live,),
+                status: Some(Status::Live),
             },
             Monomer::new(MON_AMBIG).unwrap()
         );

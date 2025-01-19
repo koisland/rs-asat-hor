@@ -36,7 +36,7 @@ repos:
     hooks:
     -   id: test
         name: Unittests
-        entry: cargo test
+        entry: cargo test --package rs-asat-hor
         pass_filenames: false
         types: [file, rust]
         language: system
