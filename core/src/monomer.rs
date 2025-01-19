@@ -28,7 +28,7 @@ impl Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Status::Live => write!(f, "Live"),
-            Status::Divergent =>  write!(f, "Divergent"),
+            Status::Divergent => write!(f, "Divergent"),
         }
     }
 }
@@ -184,11 +184,14 @@ impl FromStr for Monomer {
         }
 
         Ok(Monomer {
-            monomer_1: monomer_1.with_context(|| format!("Invalid monomer, {s}. At least one monomer is required."))?,
+            monomer_1: monomer_1.with_context(|| {
+                format!("Invalid monomer, {s}. At least one monomer is required.")
+            })?,
             monomer_2,
             suprachromosomal_family,
             chromosomes,
-            monomer_type: monomer_type.with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
+            monomer_type: monomer_type
+                .with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
             monomer_type_desc,
             status,
         })
@@ -253,7 +256,7 @@ impl FromStr for MonomerType {
 impl Display for MonomerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
-            f, 
+            f,
             "{}",
             match self {
                 MonomerType::H1 => "H1",
@@ -268,7 +271,6 @@ impl Display for MonomerType {
         )
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AncestralMonomerTypes {

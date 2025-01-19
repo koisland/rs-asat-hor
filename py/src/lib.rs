@@ -1,6 +1,6 @@
 use pyo3::{exceptions::PyValueError, prelude::*};
 
-use rs_asat_hor::{Monomer, HOR};
+use rs_asat_hor::Monomer;
 
 #[pyclass(name = "Monomer")]
 struct PyMonomer(Monomer);
@@ -11,7 +11,7 @@ impl PyMonomer {
     fn new(value: &str) -> PyResult<Self> {
         Monomer::new(value)
             .map_err(|err| PyValueError::new_err(err.to_string()))
-            .map(|mon| PyMonomer(mon))
+            .map(PyMonomer)
     }
 
     #[getter]
@@ -21,12 +21,22 @@ impl PyMonomer {
 
     #[getter]
     fn sfs(&self) -> PyResult<Vec<String>> {
-        Ok(self.0.suprachromosomal_family.iter().map(|sf|sf.to_string()).collect())
+        Ok(self
+            .0
+            .suprachromosomal_family
+            .iter()
+            .map(|sf| sf.to_string())
+            .collect())
     }
 
     #[getter]
     fn chromosomes(&self) -> PyResult<Vec<String>> {
-        Ok(self.0.chromosomes.iter().map(|chr|chr.to_string()).collect())
+        Ok(self
+            .0
+            .chromosomes
+            .iter()
+            .map(|chr| chr.to_string())
+            .collect())
     }
 
     #[getter]
