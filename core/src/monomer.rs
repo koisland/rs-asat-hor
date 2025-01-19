@@ -24,6 +24,14 @@ impl FromStr for Status {
         })
     }
 }
+impl Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Status::Live => write!(f, "Live"),
+            Status::Divergent =>  write!(f, "Divergent"),
+        }
+    }
+}
 
 impl TryFrom<char> for Status {
     type Error = eyre::Error;
@@ -44,13 +52,13 @@ impl TryFrom<char> for Status {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Monomer {
-    pub(crate) monomer_1: u8,
-    pub(crate) monomer_2: Option<u8>,
-    pub(crate) suprachromosomal_family: Vec<SF>,
-    pub(crate) chromosomes: Vec<Chromosome>,
-    pub(crate) monomer_type: MonomerType,
-    pub(crate) monomer_type_desc: Option<char>,
-    pub(crate) status: Option<Status>,
+    pub monomer_1: u8,
+    pub monomer_2: Option<u8>,
+    pub suprachromosomal_family: Vec<SF>,
+    pub chromosomes: Vec<Chromosome>,
+    pub monomer_type: MonomerType,
+    pub monomer_type_desc: Option<char>,
+    pub status: Option<Status>,
 }
 
 impl Monomer {
@@ -176,11 +184,11 @@ impl FromStr for Monomer {
         }
 
         Ok(Monomer {
-            monomer_1: monomer_1.context("Value required.")?,
+            monomer_1: monomer_1.with_context(|| format!("Invalid monomer, {s}. At least one monomer is required."))?,
             monomer_2,
             suprachromosomal_family,
             chromosomes,
-            monomer_type: monomer_type.context("Monomer type required.")?,
+            monomer_type: monomer_type.with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
             monomer_type_desc,
             status,
         })
@@ -241,6 +249,26 @@ impl FromStr for MonomerType {
         })
     }
 }
+
+impl Display for MonomerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f, 
+            "{}",
+            match self {
+                MonomerType::H1 => "H1",
+                MonomerType::H2 => "H2",
+                MonomerType::H3 => "H3",
+                MonomerType::H4 => "H4",
+                MonomerType::H5 => "H5",
+                MonomerType::H6 => "H6",
+                MonomerType::H7 => "H7",
+                MonomerType::H8 => "H8",
+            }
+        )
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AncestralMonomerTypes {

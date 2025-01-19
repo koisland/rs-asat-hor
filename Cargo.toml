@@ -1,19 +1,6 @@
+
 [workspace]
-resolver = "2"
 members = [
-  "src/*",
   "py",
+  "core",
 ]
-default-members = [
-  "src/*",
-]
-
-[package]
-name = "rs-asat-hor"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-eyre = "0.6.12"
-itertools = "0.14.0"
-log = "0.4.25"
