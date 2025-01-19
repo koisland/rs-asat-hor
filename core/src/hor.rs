@@ -106,9 +106,15 @@ fn extract_monomer_order(s: &str) -> eyre::Result<Vec<MonomerNumber>> {
             }
         }
     }
+
+    // Add edge-case if only one monomer.
+    if let (Some(_), Some(start_num)) = (start_token, start_num) {
+        ranges.push(MonomerNumber::Single(start_num));
+    }
     Ok(ranges)
 }
 
+/// An alpha-satellite higher-order repeat composed of [`Monomer`]s.
 #[derive(Debug, Clone)]
 pub struct HOR {
     monomer_structure: Vec<MonomerNumber>,
@@ -181,6 +187,8 @@ impl HOR {
     ///
     /// let hor = HOR::new("S01/1C3H1L.11-6").unwrap();
     /// let rev_hor = hor.reversed();
+    ///
+    /// assert_eq!(format!("{rev_hor}"), "S01/1C3H1L.6-11");
     /// ```
     pub fn reversed(&self) -> Self {
         let new_monomer_structure = self
@@ -252,11 +260,17 @@ impl Display for HOR {
 
 #[cfg(test)]
 mod test {
-
     use crate::hor::HOR;
 
     #[test]
-    fn test_valid_stv() {
+    fn test_hor_one_mon_stv() {
+        const HOR_SINGLE: &str = "S01/1C3H1L.11";
+        let res = HOR::new(HOR_SINGLE).unwrap();
+        assert_eq!(format!("{res}"), HOR_SINGLE);
+    }
+
+    #[test]
+    fn test_hor_simple_stv() {
         const HOR_SIMPLE: &str = "S01/1C3H1L.11-6";
         let res = HOR::new(HOR_SIMPLE).unwrap();
         assert_eq!(format!("{res}"), HOR_SIMPLE);
