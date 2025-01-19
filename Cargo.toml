@@ -1,3 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+  "src/*",
+  "py",
+]
+default-members = [
+  "src/*",
+]
+
 [package]
 name = "rs-asat-hor"
 version = "0.1.0"
