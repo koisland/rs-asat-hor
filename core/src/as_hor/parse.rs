@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::Monomer;
 
 use super::{
-    hor::{HORMonomerNumber, HOR},
+    hor::{MonomerUnit, HOR},
     token::Token,
 };
 
@@ -22,7 +22,7 @@ fn n_digits(num: u8) -> u32 {
 }
 
 pub fn hor_monomer_structure_to_monomers<'a>(
-    monomers: impl Iterator<Item = &'a HORMonomerNumber>,
+    monomers: impl Iterator<Item = &'a MonomerUnit>,
     monomer_base: &Monomer,
 ) -> Vec<Monomer> {
     let mut new_monomers = vec![];
@@ -34,7 +34,7 @@ pub fn hor_monomer_structure_to_monomers<'a>(
 
     for mon in monomers.into_iter() {
         match mon {
-            HORMonomerNumber::Range(range) => {
+            MonomerUnit::Range(range) => {
                 if range.end < range.start {
                     let new_range = range.end.saturating_sub(1)..range.start + 1;
                     // First reverse to make range iterable.
@@ -44,12 +44,12 @@ pub fn hor_monomer_structure_to_monomers<'a>(
                     new_monomers.extend(range.clone().map(fn_get_new_mon))
                 }
             }
-            HORMonomerNumber::Single(m) => {
+            MonomerUnit::Single(m) => {
                 let mut final_mon = monomer_base.clone();
                 final_mon.monomers.push(*m);
                 new_monomers.push(final_mon);
             }
-            HORMonomerNumber::Chimera(mons) => {
+            MonomerUnit::Chimera(mons) => {
                 let mut final_mon = monomer_base.clone();
                 final_mon.monomers.extend(mons);
                 new_monomers.push(final_mon);
@@ -79,7 +79,7 @@ impl FromStr for HOR {
     }
 }
 
-fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<HORMonomerNumber>> {
+fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<MonomerUnit>> {
     let mut ranges = vec![];
 
     let tokens = &mons.chars().chunk_by(|c| Token::from(*c));
@@ -96,7 +96,7 @@ fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<HORMono
 
             // Edge-case of 1-monomer.
             if tokens_iter.peek().is_none() {
-                ranges.push(HORMonomerNumber::Single(start_num));
+                ranges.push(MonomerUnit::Single(start_num));
                 break;
             }
             let Some((next_token, _)) = tokens_iter.next_if(|(tk, _)| {
@@ -128,7 +128,7 @@ fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<HORMono
                         curr_pos += n_digits(num);
                         chimeric_monomers.push(num);
                     }
-                    ranges.push(HORMonomerNumber::Chimera(chimeric_monomers));
+                    ranges.push(MonomerUnit::Chimera(chimeric_monomers));
                 }
                 // Case 2: 1-2
                 // Range of monomers.
@@ -146,13 +146,13 @@ fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<HORMono
                     };
                     let end_num = chars2num(end_num_vals.into_iter())?;
                     curr_pos += n_digits(end_num);
-                    ranges.push(HORMonomerNumber::Range(start_num..end_num + 1));
+                    ranges.push(MonomerUnit::Range(start_num..end_num + 1));
                 }
                 // Case 3: 1_
                 // Start of monomer sequence.
                 Token::Underscore => {
                     curr_pos += 1;
-                    ranges.push(HORMonomerNumber::Single(start_num));
+                    ranges.push(MonomerUnit::Single(start_num));
                 }
                 _ => unreachable!(),
             }

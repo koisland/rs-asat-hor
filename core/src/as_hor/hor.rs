@@ -9,7 +9,7 @@ use itertools::Itertools;
 use crate::{monomer::Monomer, monomers_to_hor, Strand};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HORMonomerNumber {
+pub enum MonomerUnit {
     Range(Range<u8>),
     Single(u8),
     Chimera(Vec<u8>),
@@ -25,7 +25,7 @@ pub enum HORMonomerNumber {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HOR {
-    pub(crate) monomer_structure: Vec<HORMonomerNumber>,
+    pub(crate) monomer_structure: Vec<MonomerUnit>,
     pub(crate) monomers: Vec<Monomer>,
 }
 
@@ -48,9 +48,9 @@ impl HOR {
     /// use rs_asat_hor::HOR;
     ///
     /// let hor = HOR::new("S01/1C3H1L.11-6").unwrap();
-    /// assert_eq!(hor.len(), 6)
+    /// assert_eq!(hor.n_monomers(), 6)
     /// ```
-    pub fn length(&self) -> usize {
+    pub fn n_monomers(&self) -> usize {
         self.monomers.len()
     }
 
@@ -71,6 +71,21 @@ impl HOR {
     /// ```
     pub fn monomers(&self) -> &[Monomer] {
         &self.monomers[..]
+    }
+
+    /// Get the [`MonomerUnit`]s within this [`HOR`].
+    ///
+    /// ```
+    /// use rs_asat_hor::{HOR, MonomerUnit};
+    ///
+    /// let hor = HOR::new("S01/1C3H1L.7-9_11").unwrap();
+    /// assert_eq!(
+    ///     hor.monomer_units(),
+    ///     &[MonomerUnit::Range(7..10), MonomerUnit::Single(11)]
+    /// )
+    /// ```
+    pub fn monomer_units(&self) -> &[MonomerUnit] {
+        &self.monomer_structure[..]
     }
 
     /// Generate [`HOR`]s from monomers.
@@ -113,13 +128,13 @@ impl HOR {
             .iter()
             .rev()
             .map(|m| match m {
-                HORMonomerNumber::Range(range) => {
-                    HORMonomerNumber::Range(range.end.saturating_sub(1)..range.start + 1)
+                MonomerUnit::Range(range) => {
+                    MonomerUnit::Range(range.end.saturating_sub(1)..range.start + 1)
                 }
-                HORMonomerNumber::Chimera(monomers) => {
-                    HORMonomerNumber::Chimera(monomers.iter().rev().cloned().collect())
+                MonomerUnit::Chimera(monomers) => {
+                    MonomerUnit::Chimera(monomers.iter().rev().cloned().collect())
                 }
-                HORMonomerNumber::Single(_) => m.clone(),
+                MonomerUnit::Single(_) => m.clone(),
             })
             .collect_vec();
         let new_monomers = self
@@ -175,13 +190,13 @@ impl Display for HOR {
 
         for (i, mon_order) in self.monomer_structure.iter().enumerate() {
             match mon_order {
-                HORMonomerNumber::Range(range) => {
+                MonomerUnit::Range(range) => {
                     write!(f, "{}-{}", range.start, range.end.saturating_sub(1))?;
                 }
-                HORMonomerNumber::Single(mon) => {
+                MonomerUnit::Single(mon) => {
                     write!(f, "{mon}")?;
                 }
-                HORMonomerNumber::Chimera(monomers) => {
+                MonomerUnit::Chimera(monomers) => {
                     write!(f, "{}", monomers.iter().join("/"))?;
                 }
             }

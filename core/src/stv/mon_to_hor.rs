@@ -1,20 +1,20 @@
 use eyre::bail;
 
 use crate::{
-    as_hor::{hor_monomer_structure_to_monomers, HORMonomerNumber},
+    as_hor::{hor_monomer_structure_to_monomers, MonomerUnit},
     Monomer, Strand, HOR,
 };
 
-fn get_hor_num(start_mon: Option<&Monomer>, current_num: &u8) -> eyre::Result<HORMonomerNumber> {
+fn get_hor_num(start_mon: Option<&Monomer>, current_num: &u8) -> eyre::Result<MonomerUnit> {
     let Some(Some(start_num)) = start_mon.map(|mon| mon.right_most_num()) else {
         bail!("Start ({start_mon:?}) monomer number not found.")
     };
     // Add previous range or single monomer.
     // If same number, is single monomer.
     if start_num == current_num {
-        Ok(HORMonomerNumber::Single(*start_num))
+        Ok(MonomerUnit::Single(*start_num))
     } else {
-        Ok(HORMonomerNumber::Range(*start_num..*current_num + 1))
+        Ok(MonomerUnit::Range(*start_num..*current_num + 1))
     }
 }
 
@@ -53,7 +53,7 @@ where
     // Bookkeeping vars.
     // Keep track of start and store units. Clear when add new HOR.
     let mut start_mon: Option<&Monomer> = None;
-    let mut hor_units: Vec<HORMonomerNumber> = Vec::new();
+    let mut hor_units: Vec<MonomerUnit> = Vec::new();
 
     while let Some(mon_1) = monomers_iter.next() {
         let mon_1_chimeric = mon_1.is_chimeric();
@@ -65,7 +65,7 @@ where
         let Some(mon_2) = monomers_iter.peek() else {
             // Add remainder once hit end of iterator.
             let final_hor_unit = if mon_1_chimeric {
-                HORMonomerNumber::Chimera(mon_1.monomers.to_vec())
+                MonomerUnit::Chimera(mon_1.monomers.to_vec())
             } else {
                 get_hor_num(start_mon, mon_1_num)?
             };
@@ -94,7 +94,7 @@ where
             // > >  > x  >
             // 4 5 *6 - *1
             let hor_unit = if mon_1_chimeric {
-                HORMonomerNumber::Chimera(mon_1.monomers.to_vec())
+                MonomerUnit::Chimera(mon_1.monomers.to_vec())
             } else {
                 get_hor_num(start_mon, mon_1_num)?
             };
@@ -120,7 +120,7 @@ where
             hor_units.push(get_hor_num(start_mon, mon_1_num)?);
 
             // Add chimeric monomer.
-            hor_units.push(HORMonomerNumber::Chimera(mon_2.monomers.to_vec()));
+            hor_units.push(MonomerUnit::Chimera(mon_2.monomers.to_vec()));
 
             // Clear start mon.
             // And consumer chimeric mon.
