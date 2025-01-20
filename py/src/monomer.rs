@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use pyo3::{exceptions::PyValueError, prelude::*};
 
 use rs_asat_hor::Monomer;
@@ -20,8 +22,8 @@ impl PyMonomer {
     }
 
     #[getter]
-    fn monomers(&self) -> PyResult<(u8, Option<u8>)> {
-        Ok((self.0.monomer_1, self.0.monomer_2))
+    fn monomers(&self) -> PyResult<Vec<u8>> {
+        Ok(self.0.monomers.to_vec())
     }
 
     #[getter]
@@ -47,9 +49,9 @@ impl PyMonomer {
     #[getter]
     fn monomer_type(&self) -> PyResult<String> {
         let mut mon_type = self.0.monomer_type.to_string();
-        if let Some(mon_type_desc) = self.0.monomer_type_desc {
+        if let Some(mon_type_desc) = self.0.monomer_type_desc.as_ref() {
             mon_type.push('-');
-            mon_type.push(mon_type_desc);
+            mon_type.push_str(mon_type_desc.deref());
         }
         Ok(mon_type)
     }

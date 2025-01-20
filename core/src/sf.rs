@@ -11,6 +11,7 @@ pub enum SF {
     SF3,
     SF4,
     SF5,
+    SF6,
 }
 
 impl FromStr for SF {
@@ -25,6 +26,7 @@ impl FromStr for SF {
             "3" | "SF3" => SF::SF3,
             "4" | "SF4" => SF::SF4,
             "5" | "SF5" => SF::SF5,
+            "6" | "SF6" => SF::SF6,
             _ => bail!("Invalid SF class, {s}"),
         })
     }
@@ -43,6 +45,7 @@ impl Display for SF {
                 SF::SF3 => "3",
                 SF::SF4 => "4",
                 SF::SF5 => "5",
+                SF::SF6 => "6",
             }
         )
     }

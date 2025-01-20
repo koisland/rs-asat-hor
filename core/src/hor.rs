@@ -34,7 +34,7 @@ impl From<char> for Token {
 pub enum MonomerNumber {
     Range(Range<u8>),
     Single(u8),
-    Chimera(u8, u8),
+    Chimera(Vec<u8>),
 }
 
 #[inline]
@@ -42,78 +42,100 @@ fn chars2num(chars: impl Iterator<Item = char>) -> eyre::Result<u8> {
     Ok(chars.into_iter().join("").parse::<u8>()?)
 }
 
-fn extract_monomer_order(s: &str) -> eyre::Result<Vec<MonomerNumber>> {
-    let mut start_token: Option<Token> = None;
-    let mut start_num: Option<u8> = None;
-    let mut prev_token: Option<Token> = None;
+#[inline]
+// https://stackoverflow.com/a/69298721
+fn n_digits(num: u8) -> u32 {
+    num.checked_ilog10().unwrap_or(0) + 1
+}
+
+fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<MonomerNumber>> {
     let mut ranges = vec![];
 
-    for (token, grps) in &s.chars().chunk_by(|c| Token::from(*c)) {
-        // 4_7-8
-        // 46-35_32/34_31/32_31-26_15-1
-        match (&start_token, &prev_token, &token) {
-            (None, None, Token::Number) => {
-                start_token = Some(token);
-                start_num = Some(chars2num(grps.into_iter())?);
-            }
-            // Skip if new state.
-            // _
-            (None, None, Token::Underscore) => {
-                continue;
-            }
-            (None, None, _) => {
-                bail!("Invalid starting token, {token:?}.");
-            }
-            (None, Some(_), _) => {
-                unreachable!("{start_token:?},{prev_token:?},{token:?}")
-            }
-            // Start is single mon.
-            // 1_
-            (Some(Token::Number), None, Token::Underscore) => {
-                // Add 1-length range.
-                ranges.push(MonomerNumber::Single(start_num.unwrap()));
-                // Reset start.
-                start_token.take();
-                start_num.take();
-            }
-            // Continuation of starting mon.
-            // 1-
-            // Start is chimeric mon.
-            // 1/
-            (Some(Token::Number), None, _) => prev_token = Some(token),
-            (Some(_), None, _) => {
-                unreachable!("{start_token:?},{prev_token:?},{token:?}")
-            }
-            // Range
-            // 1-12
-            (Some(Token::Number), Some(Token::Hyphen), Token::Number) => {
-                let start_num_end = chars2num(grps.into_iter())?;
-                ranges.push(MonomerNumber::Range(start_num.unwrap()..start_num_end + 1));
-                start_token.take();
-                start_num.take();
-                prev_token.take();
-            }
-            // Chimera
-            // 3/10
-            (Some(Token::Number), Some(Token::Chimera), Token::Number) => {
-                let start_num_second = chars2num(grps.into_iter())?;
-                ranges.push(MonomerNumber::Chimera(start_num.unwrap(), start_num_second));
-                start_token.take();
-                start_num.take();
-                prev_token.take();
-            }
-            (Some(Token::Number), Some(_), Token::Other(_)) => {
-                bail!("Invalid pattern. {s:?}")
-            }
-            (Some(_), Some(_), _) => {
-                unreachable!("{start_token:?},{prev_token:?},{token:?}")
-            }
-        }
-    }
+    let tokens = &mons.chars().chunk_by(|c| Token::from(*c));
+    let mut tokens_iter = tokens.into_iter().peekable();
 
-    // Add edge-case if only one monomer.
-    if let (Some(_), Some(start_num)) = (start_token, start_num) {
-        ranges.push(MonomerNumber::Single(start_num));
+    let mon_info_len = mon_info.len().try_into()?;
+    let mut curr_pos: u32 = mon_info_len;
+    while let Some((token, values)) = tokens_iter.next() {
+        // Must start with number.
+        if token == Token::Number {
+            let start_num = chars2num(values.into_iter())?;
+            // 45
+            curr_pos += n_digits(start_num);
+
+            // Edge-case of 1-monomer.
+            if tokens_iter.peek().is_none() {
+                ranges.push(MonomerNumber::Single(start_num));
+                break;
+            }
+            let Some((next_token, _)) = tokens_iter.next_if(|(tk, _)| {
+                matches!(tk, Token::Chimera | Token::Hyphen | Token::Underscore)
+            }) else {
+                bail!(
+                    "Invalid token ('{}') following number {start_num}, at position {curr_pos}.",
+                    tokens_iter
+                        .next()
+                        .map(|mut t| t.1.join(""))
+                        .unwrap_or_default()
+                )
+            };
+            curr_pos += 1;
+
+            match next_token {
+                // Case 1: 3/10
+                // Chimeric monomers
+                Token::Chimera => {
+                    let mut chimeric_monomers = vec![start_num];
+                    while let Some((chimera_token, chimera_token_vals)) =
+                        tokens_iter.next_if(|(tk, _)| matches!(tk, Token::Number | Token::Chimera))
+                    {
+                        if chimera_token == Token::Chimera {
+                            curr_pos += 1;
+                            continue;
+                        }
+                        let num = chars2num(chimera_token_vals.into_iter())?;
+                        curr_pos += n_digits(num);
+                        chimeric_monomers.push(num);
+                    }
+                    ranges.push(MonomerNumber::Chimera(chimeric_monomers));
+                }
+                // Case 2: 1-2
+                // Range of monomers.
+                Token::Hyphen => {
+                    let Some((_, end_num_vals)) =
+                        tokens_iter.next_if(|(tk, _)| *tk == Token::Number)
+                    else {
+                        bail!(
+                            "Unexpected token ('{}') at pos {curr_pos}. Expect number after '-'.",
+                            tokens_iter
+                                .next()
+                                .map(|mut t| t.1.join(""))
+                                .unwrap_or_default()
+                        )
+                    };
+                    let end_num = chars2num(end_num_vals.into_iter())?;
+                    curr_pos += n_digits(end_num);
+                    ranges.push(MonomerNumber::Range(start_num..end_num + 1));
+                }
+                // Case 3: 1_
+                // Start of monomer sequence.
+                Token::Underscore => {
+                    curr_pos += 1;
+                    ranges.push(MonomerNumber::Single(start_num));
+                }
+                _ => unreachable!(),
+            }
+        } else if token == Token::Underscore && curr_pos != mon_info_len {
+            // Do nothing if break in monomer sequence.
+            // But don't allow at start.
+            curr_pos += 1;
+            continue;
+        } else {
+            bail!(
+                "Invalid token ('{}') at {curr_pos}",
+                values.into_iter().join("")
+            );
+        }
     }
     Ok(ranges)
 }
@@ -132,11 +154,14 @@ impl FromStr for HOR {
         let Some((mon_info, mons)) = s.split('.').collect_tuple::<(&str, &str)>() else {
             bail!("Invalid HOR, {s}. HOR requires monomer info and monomers delimited by '.'")
         };
-        let monomers = extract_monomer_order(mons)?;
-        let monomer_base = Monomer::new(&format!("{mon_info}.1"))?;
+        let monomers = extract_monomer_order(mons, mon_info)?;
+        // Start with base template.
+        let mut monomer_base = Monomer::new(&format!("{mon_info}.1"))?;
+        monomer_base.monomers.clear();
+
         let fn_get_new_mon = |m| {
             let mut final_mon = monomer_base.clone();
-            final_mon.monomer_1 = m;
+            final_mon.monomers.push(m);
             final_mon
         };
         let mut new_monomers = vec![];
@@ -154,13 +179,12 @@ impl FromStr for HOR {
                 }
                 MonomerNumber::Single(m) => {
                     let mut final_mon = monomer_base.clone();
-                    final_mon.monomer_1 = *m;
+                    final_mon.monomers.push(*m);
                     new_monomers.push(final_mon);
                 }
-                MonomerNumber::Chimera(m1, m2) => {
+                MonomerNumber::Chimera(mons) => {
                     let mut final_mon = monomer_base.clone();
-                    final_mon.monomer_1 = *m1;
-                    final_mon.monomer_2 = Some(*m2);
+                    final_mon.monomers.extend(mons);
                     new_monomers.push(final_mon);
                 }
             }
@@ -209,7 +233,9 @@ impl HOR {
                 MonomerNumber::Range(range) => {
                     MonomerNumber::Range(range.end.saturating_sub(1)..range.start + 1)
                 }
-                MonomerNumber::Chimera(m1, m2) => MonomerNumber::Chimera(*m2, *m1),
+                MonomerNumber::Chimera(monomers) => {
+                    MonomerNumber::Chimera(monomers.iter().rev().cloned().collect())
+                }
                 MonomerNumber::Single(_) => m.clone(),
             })
             .collect_vec();
@@ -220,9 +246,7 @@ impl HOR {
             .rev()
             .map(|mut mon| {
                 // Swap chimeric monomer if present.
-                if let Some(m2) = mon.monomer_2.as_mut() {
-                    std::mem::swap(m2, &mut mon.monomer_1);
-                }
+                mon.monomers.reverse();
                 mon
             })
             .collect_vec();
@@ -274,8 +298,8 @@ impl Display for HOR {
                 MonomerNumber::Single(mon) => {
                     write!(f, "{mon}")?;
                 }
-                MonomerNumber::Chimera(m1, m2) => {
-                    write!(f, "{m1}/{m2}")?;
+                MonomerNumber::Chimera(monomers) => {
+                    write!(f, "{}", monomers.iter().join("/"))?;
                 }
             }
             if i != self.monomer_structure.len() - 1 {
@@ -293,14 +317,20 @@ mod test {
     use crate::hor::HOR;
 
     #[test]
-    fn test_hor_one_mon_stv() {
+    fn test_one_mon_stv() {
         const HOR_SINGLE: &str = "S01/1C3H1L.11";
         let res = HOR::new(HOR_SINGLE).unwrap();
         assert_eq!(format!("{res}"), HOR_SINGLE);
     }
 
     #[test]
-    fn test_hor_simple_stv() {
+    fn test_invalid_start_stv() {
+        const HOR_INV_ST: &str = "S1C10H1L._6/2/4";
+        assert!(HOR::new(HOR_INV_ST).is_err());
+    }
+
+    #[test]
+    fn test_simple_stv() {
         const HOR_SIMPLE: &str = "S01/1C3H1L.11-6";
         let res = HOR::new(HOR_SIMPLE).unwrap();
         assert_eq!(format!("{res}"), HOR_SIMPLE);
@@ -325,6 +355,13 @@ mod test {
         const HOR_CHIM: &str = "S4CYH1L.46-35_32/34_31/32_31-26_15-1";
         let res = HOR::new(HOR_CHIM).unwrap();
         assert_eq!(format!("{res}"), HOR_CHIM);
+    }
+
+    #[test]
+    fn test_chim_multi_stv() {
+        const HOR_CHIM_MULT: &str = "S1C10H1L.1-5_6/2/4";
+        let res = HOR::new(HOR_CHIM_MULT).unwrap();
+        assert_eq!(format!("{res}"), HOR_CHIM_MULT);
     }
 
     #[test]
