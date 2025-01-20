@@ -1,6 +1,7 @@
-mod hor;
-mod mon_to_hor;
+mod as_hor;
 mod monomer;
+mod stv;
 
-pub use hor::HOR;
-pub use monomer::Monomer;
+pub use as_hor::HOR;
+pub use monomer::{Monomer, Strand};
+pub use stv::monomers_to_hor;

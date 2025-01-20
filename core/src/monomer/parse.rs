@@ -4,7 +4,7 @@ use std::str::FromStr;
 use itertools::Itertools;
 
 use super::{
-    chrom::Chromosome, mon_type::MonomerType, sf::SF, status::Status, token::Token, Monomer,
+    chrom::Chromosome, mon::Monomer, mon_type::MonomerType, sf::SF, status::Status, token::Token,
 };
 
 impl FromStr for Monomer {
@@ -131,13 +131,16 @@ impl FromStr for Monomer {
                 .with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
             monomer_type_desc,
             status,
+            strand: None,
         })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::monomer::{chrom::Chromosome, sf::SF, Monomer, MonomerType, Status};
+    use crate::monomer::{
+        chrom::Chromosome, mon::Monomer, mon_type::MonomerType, sf::SF, status::Status,
+    };
 
     #[test]
     fn test_invalid_mon() {
@@ -160,6 +163,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
+                strand: None
             },
             Monomer::new(MON).unwrap()
         )
@@ -176,6 +180,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
+                strand: None
             },
             Monomer::new(MON_LIVE).unwrap()
         )
@@ -192,6 +197,7 @@ mod test {
                 monomer_type: MonomerType::H7,
                 monomer_type_desc: None,
                 status: None,
+                strand: None,
             },
             Monomer::new(MON_NON_LIVE).unwrap()
         )
@@ -208,6 +214,7 @@ mod test {
                 monomer_type: MonomerType::H6,
                 monomer_type_desc: None,
                 status: Some(Status::Divergent),
+                strand: None,
             },
             Monomer::new(MON_DIV).unwrap()
         )
@@ -224,6 +231,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
+                strand: None,
             },
             Monomer::new(MON_CHIMERIC).unwrap()
         );
@@ -241,6 +249,7 @@ mod test {
                 monomer_type: MonomerType::H2,
                 monomer_type_desc: Some(String::from("B")),
                 status: None,
+                strand: None,
             },
             Monomer::new(MON_HYPHEN_1).unwrap()
         );
@@ -252,6 +261,7 @@ mod test {
                 monomer_type: MonomerType::H2,
                 monomer_type_desc: Some(String::from("C")),
                 status: None,
+                strand: None,
             },
             Monomer::new(MON_HYPHEN_2).unwrap()
         );
@@ -268,6 +278,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
+                strand: None,
             },
             Monomer::new(MON_AMBIG).unwrap()
         );
@@ -284,6 +295,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
+                strand: None,
             },
             Monomer::new(MON_SFS).unwrap()
         )
