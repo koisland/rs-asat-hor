@@ -143,8 +143,8 @@ fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<Monomer
 /// An alpha-satellite higher-order repeat composed of [`Monomer`]s.
 #[derive(Debug, Clone)]
 pub struct HOR {
-    monomer_structure: Vec<MonomerNumber>,
-    monomers: Vec<Monomer>,
+    pub(crate) monomer_structure: Vec<MonomerNumber>,
+    pub(crate) monomers: Vec<Monomer>,
 }
 
 impl FromStr for HOR {
