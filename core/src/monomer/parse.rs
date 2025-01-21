@@ -163,7 +163,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
-                strand: None
+                strand: None,
             },
             Monomer::new(MON).unwrap()
         )
@@ -180,7 +180,7 @@ mod test {
                 monomer_type: MonomerType::H1,
                 monomer_type_desc: None,
                 status: Some(Status::Live),
-                strand: None
+                strand: None,
             },
             Monomer::new(MON_LIVE).unwrap()
         )

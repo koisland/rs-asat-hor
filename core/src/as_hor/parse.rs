@@ -35,13 +35,15 @@ pub fn hor_monomer_structure_to_monomers<'a>(
     for mon in monomers.into_iter() {
         match mon {
             MonomerUnit::Range(range) => {
+                // We avoid range inclusive for performance.
+                // But we need to ensure it has the correct end so we add 1 to both ends.
                 if range.end < range.start {
-                    let new_range = range.end.saturating_sub(1)..range.start + 1;
+                    let new_range = range.end..range.start + 1;
                     // First reverse to make range iterable.
                     // Second reverse to restore order.
                     new_monomers.extend(new_range.rev().map(fn_get_new_mon))
                 } else {
-                    new_monomers.extend(range.clone().map(fn_get_new_mon))
+                    new_monomers.extend((range.start..range.end + 1).map(fn_get_new_mon))
                 }
             }
             MonomerUnit::Single(m) => {
@@ -146,7 +148,7 @@ fn extract_monomer_order(mons: &str, mon_info: &str) -> eyre::Result<Vec<Monomer
                     };
                     let end_num = chars2num(end_num_vals.into_iter())?;
                     curr_pos += n_digits(end_num);
-                    ranges.push(MonomerUnit::Range(start_num..end_num + 1));
+                    ranges.push(MonomerUnit::Range(start_num..end_num));
                 }
                 // Case 3: 1_
                 // Start of monomer sequence.

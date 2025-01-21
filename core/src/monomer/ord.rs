@@ -1,9 +1,25 @@
+use std::str::FromStr;
+
+use eyre::bail;
+
 use super::Monomer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Strand {
     Plus,
     Minus,
+}
+
+impl FromStr for Strand {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "+" | "plus" => Ok(Strand::Plus),
+            "-" | "minus" => Ok(Strand::Minus),
+            _ => bail!("Not valid strand. {s}"),
+        }
+    }
 }
 
 impl Monomer {

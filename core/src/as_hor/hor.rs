@@ -81,7 +81,7 @@ impl HOR {
     /// let hor = HOR::new("S01/1C3H1L.7-9_11").unwrap();
     /// assert_eq!(
     ///     hor.monomer_units(),
-    ///     &[MonomerUnit::Range(7..10), MonomerUnit::Single(11)]
+    ///     &[MonomerUnit::Range(7..9), MonomerUnit::Single(11)]
     /// )
     /// ```
     pub fn monomer_units(&self) -> &[MonomerUnit] {
@@ -128,9 +128,7 @@ impl HOR {
             .iter()
             .rev()
             .map(|m| match m {
-                MonomerUnit::Range(range) => {
-                    MonomerUnit::Range(range.end.saturating_sub(1)..range.start + 1)
-                }
+                MonomerUnit::Range(range) => MonomerUnit::Range(range.end..range.start),
                 MonomerUnit::Chimera(monomers) => {
                     MonomerUnit::Chimera(monomers.iter().rev().cloned().collect())
                 }
@@ -191,7 +189,7 @@ impl Display for HOR {
         for (i, mon_order) in self.monomer_structure.iter().enumerate() {
             match mon_order {
                 MonomerUnit::Range(range) => {
-                    write!(f, "{}-{}", range.start, range.end.saturating_sub(1))?;
+                    write!(f, "{}-{}", range.start, range.end)?;
                 }
                 MonomerUnit::Single(mon) => {
                     write!(f, "{mon}")?;
