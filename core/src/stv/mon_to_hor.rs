@@ -29,13 +29,13 @@ fn get_hor_num(start_mon: Option<&Monomer>, current_num: &u8) -> eyre::Result<Mo
 ///     Monomer::new("S1C1/5/19H1L.2").unwrap(),
 ///     Monomer::new("S1C1/5/19H1L.3").unwrap(),
 /// ];
-/// let hor = monomers_to_hor(monomers.iter(), Strand::Plus).unwrap();
+/// let hor = monomers_to_hor(monomers.iter(), Some(Strand::Plus)).unwrap();
 /// assert_eq!(
 ///     hor[0],
 ///     HOR::new("S1C1/5/19H1L.1-3").unwrap(),
 /// )
 /// ```
-pub fn monomers_to_hor<'a, M>(monomers: M, strand: Strand) -> eyre::Result<Vec<HOR>>
+pub fn monomers_to_hor<'a, M>(monomers: M, enforce_strand: Option<Strand>) -> eyre::Result<Vec<HOR>>
 where
     M: Iterator<Item = &'a Monomer>,
     M: ExactSizeIterator,
@@ -56,11 +56,13 @@ where
     let mut hor_units: Vec<MonomerUnit> = Vec::new();
 
     while let Some(mon_1) = monomers_iter.next() {
+        // Set start monomer.
         let mon_1_chimeric = mon_1.is_chimeric();
         if start_mon.is_none() {
             start_mon = Some(mon_1)
         }
         let mon_1_num = mon_1.right_most_num().unwrap();
+
         // Check mon_2.
         let Some(mon_2) = monomers_iter.peek() else {
             // Add remainder once hit end of iterator.
@@ -72,12 +74,17 @@ where
             hor_units.push(final_hor_unit);
             break;
         };
+        let mon_2_chimeric = mon_2.is_chimeric();
         let mon_2_num = mon_2.left_most_num().unwrap();
+
+        // Check if want to enforce strand.
+        // If not, get strand based on mon_2.
+        // If no strand provided, assume forward ort.
+        let strand = enforce_strand.unwrap_or_else(|| mon_2.strand.unwrap_or(Strand::Plus));
+
         // > > x >
         // 5 6 - 1
         let is_gap = mon_1_num.abs_diff(*mon_2_num) > 1;
-        // Get strand based on mon_2.
-        let strand = mon_2.strand.as_ref().unwrap_or(&strand);
         let is_broken = match strand {
             // > x > >
             // 6 - 5 6
@@ -86,7 +93,6 @@ where
             // 5 - 6 5
             Strand::Minus => mon_1 < mon_2,
         };
-        let mon_2_chimeric = mon_2.is_chimeric();
 
         if is_gap || is_broken {
             // Case 1: Gap in range.
@@ -142,8 +148,6 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, io::BufRead, str::FromStr};
-
     use itertools::Itertools;
 
     use crate::{Monomer, HOR};
@@ -174,7 +178,7 @@ mod test {
             Monomer::new("S2C13/21H1L.1").unwrap(),
         ];
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Minus)
+            monomers_to_hor(mons.iter(), Some(Strand::Minus))
                 .unwrap()
                 .into_iter(),
             [
@@ -197,7 +201,7 @@ mod test {
         ];
         // Going in minus strand breaks order for each step.
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Minus)
+            monomers_to_hor(mons.iter(), Some(Strand::Minus))
                 .unwrap()
                 .into_iter(),
             [
@@ -222,7 +226,7 @@ mod test {
             Monomer::new("S1C1/5/19H1L.5").unwrap(),
         ];
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Plus)
+            monomers_to_hor(mons.iter(), Some(Strand::Plus))
                 .unwrap()
                 .into_iter(),
             [
@@ -245,7 +249,7 @@ mod test {
             Monomer::new("S1C1/5/19H1L.5").unwrap(),
         ];
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Plus)
+            monomers_to_hor(mons.iter(), Some(Strand::Plus))
                 .unwrap()
                 .into_iter(),
             [HOR::new("S1C1/5/19H1L.1-5").unwrap()].into_iter(),
@@ -266,7 +270,7 @@ mod test {
             Monomer::new("S1C1/5/19H1L.6").unwrap(),
         ];
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Plus)
+            monomers_to_hor(mons.iter(), Some(Strand::Plus))
                 .unwrap()
                 .into_iter(),
             [HOR::new("S1C1/5/19H1L.1-5_6/4_5-6").unwrap()].into_iter(),
@@ -283,7 +287,7 @@ mod test {
             Monomer::new("S1C1/5/19H1L.6/4").unwrap(),
         ];
         assert_hors_equal(
-            monomers_to_hor(mons.iter(), Strand::Minus)
+            monomers_to_hor(mons.iter(), Some(Strand::Minus))
                 .unwrap()
                 .into_iter(),
             [
@@ -309,7 +313,7 @@ mod test {
             .map(|mon| mon.with_strand(Strand::Minus))
             .collect_vec();
         assert_hors_equal(
-            monomers_to_hor(rev_mons.iter(), Strand::Minus)
+            monomers_to_hor(rev_mons.iter(), Some(Strand::Minus))
                 .unwrap()
                 .into_iter(),
             [HOR::new("S1C1/5/19H1L.5_6/4_5_6/4").unwrap()].into_iter(),
@@ -317,76 +321,5 @@ mod test {
             // We only compare the formatted string instead.
             true,
         );
-    }
-
-    // #[test]
-    fn _test_read_mon_bed() {
-        /*
-        cargo test --package rs-asat-hor --lib -- stv::mon_to_hor::test::test_read_mon_bed --exact --show-output
-        */
-        let file = std::fs::File::open("test/all_mons.bed").unwrap();
-        let fh = std::io::BufReader::new(file);
-
-        let mut chr_mons: HashMap<String, Vec<(u64, u64, Monomer)>> = HashMap::new();
-        for line in fh.lines() {
-            let line = line.unwrap();
-            let Some((chrom, st, end, name, score, ort, _tst, _tend, _rgb)) =
-                line.trim().split('\t').collect_tuple()
-            else {
-                continue;
-            };
-            let (st, end) = (st.parse::<u64>().unwrap(), end.parse::<u64>().unwrap());
-            let score = score.parse::<f32>().unwrap();
-            if score < 85.0 {
-                continue;
-            }
-            let strand = Strand::from_str(ort).unwrap();
-            if let Ok(mon) = Monomer::new(name).map(|m| m.with_strand(strand)) {
-                if let Some(mons) = chr_mons.get_mut(chrom) {
-                    mons.push((st, end, mon));
-                } else {
-                    chr_mons
-                        .entry(chrom.to_owned())
-                        .or_insert(vec![(st, end, mon)]);
-                }
-            } else {
-                dbg!(name);
-            }
-        }
-        for (chrom, mons) in chr_mons.iter() {
-            let hors = monomers_to_hor(mons.iter().map(|m| &m.2), Strand::Plus).unwrap();
-
-            // Keep track of monomer index positions.
-            let mut mon_positions = vec![0; hors.len() + 1];
-            for (i, mon) in hors
-                .iter()
-                .map(|h| h.n_monomers())
-                .enumerate()
-                .map(|(i, m)| (i + 1, m))
-            {
-                mon_positions[i] = mon + mon_positions.get(i - 1).unwrap() - 1
-            }
-            for ((st, end), hor) in mon_positions
-                .into_iter()
-                .tuple_windows::<(usize, usize)>()
-                .into_iter()
-                .zip(hors.iter())
-            {
-                let Some(mons) = mons.get(st..end + 1) else {
-                    continue;
-                };
-                let mut min_st = u64::MAX;
-                let mut max_end = 0;
-                for (st, end, _) in mons {
-                    min_st = std::cmp::min(min_st, *st);
-                    max_end = std::cmp::max(max_end, *end);
-                }
-                assert!(
-                    min_st != u64::MAX,
-                    "Logic error with indexing with {chrom}:{st}-{end} and {hor}."
-                );
-                println!("{chrom}\t{min_st}\t{max_end}\t{hor}");
-            }
-        }
     }
 }

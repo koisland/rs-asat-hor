@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::{monomer::Monomer, monomers_to_hor, Strand};
+use crate::{monomer::Monomer, monomers_to_hor};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MonomerUnit {
@@ -89,10 +89,7 @@ impl HOR {
     }
 
     /// Generate [`HOR`]s from monomers.
-    ///
-    /// Convenience function that makes the following assumptions:
-    /// * Monomers are in [`crate::Strand::Plus`] orientation.
-    /// * For finer control, use [`crate::monomers_to_hor`].
+    /// * Convenience function for [`crate::monomers_to_hor`].
     ///
     /// ```
     /// use rs_asat_hor::{HOR, Monomer};
@@ -109,7 +106,7 @@ impl HOR {
     /// )
     /// ```
     pub fn from_monomers(monomers: &[Monomer]) -> eyre::Result<Vec<Self>> {
-        monomers_to_hor(monomers.iter(), Strand::Plus)
+        monomers_to_hor(monomers.iter(), None)
     }
 
     /// Generate the reversed version of this [`HOR`].

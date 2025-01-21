@@ -1,2 +1,4 @@
 *.bed
 *.py
+
+!mons.bed
