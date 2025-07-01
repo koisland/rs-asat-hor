@@ -47,13 +47,13 @@ impl PyMonomer {
     }
 
     #[getter]
-    fn monomer_type(&self) -> PyResult<String> {
-        let mut mon_type = self.0.monomer_type.to_string();
-        if let Some(mon_type_desc) = self.0.monomer_type_desc.as_ref() {
-            mon_type.push('-');
-            mon_type.push_str(mon_type_desc.deref());
+    fn hor(&self) -> PyResult<String> {
+        let mut hor = self.0.hor.to_string();
+        if let Some(hor_desc) = self.0.hor_desc.as_ref() {
+            hor.push('-');
+            hor.push_str(hor_desc.deref());
         }
-        Ok(mon_type)
+        Ok(hor)
     }
 
     #[getter]

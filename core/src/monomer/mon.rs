@@ -2,7 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use itertools::Itertools;
 
-use super::{chrom::Chromosome, mon_type::MonomerType, ord::Strand, sf::SF, status::Status};
+use super::{chrom::Chromosome, mon_type::MonomerHOR, ord::Strand, sf::SF, status::Status};
 
 /// An alpha-satellite higher-order repeat monomer.
 ///
@@ -16,8 +16,8 @@ pub struct Monomer {
     pub monomers: Vec<u8>,
     pub suprachromosomal_family: Vec<SF>,
     pub chromosomes: Vec<Chromosome>,
-    pub monomer_type: MonomerType,
-    pub monomer_type_desc: Option<String>,
+    pub hor: MonomerHOR,
+    pub hor_desc: Option<String>,
     pub status: Option<Status>,
     pub strand: Option<Strand>,
 }
@@ -77,8 +77,8 @@ impl Display for Monomer {
             None => "",
         };
         let monomers = self.monomers.iter().join("/");
-        let monomer_type_desc = self
-            .monomer_type_desc
+        let hor_desc = self
+            .hor_desc
             .as_ref()
             .map(|desc| format!("-{desc}"))
             .unwrap_or_default();
@@ -86,8 +86,8 @@ impl Display for Monomer {
         let sfs = self.suprachromosomal_family.iter().join("/");
         write!(
             f,
-            "S{}C{}{:?}{monomer_type_desc}{status}.{monomers}",
-            sfs, chromosomes, self.monomer_type,
+            "S{}C{}{:?}{hor_desc}{status}.{monomers}",
+            sfs, chromosomes, self.hor,
         )
     }
 }

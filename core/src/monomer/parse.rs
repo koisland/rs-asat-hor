@@ -4,7 +4,7 @@ use std::str::FromStr;
 use itertools::Itertools;
 
 use super::{
-    chrom::Chromosome, mon::Monomer, mon_type::MonomerType, sf::SF, status::Status, token::Token,
+    chrom::Chromosome, mon::Monomer, mon_type::MonomerHOR, sf::SF, status::Status, token::Token,
 };
 
 impl FromStr for Monomer {
@@ -14,8 +14,8 @@ impl FromStr for Monomer {
         let mut monomers: Vec<u8> = vec![];
         let mut suprachromosomal_family: Vec<SF> = Vec::with_capacity(2);
         let mut chromosomes: Vec<Chromosome> = vec![];
-        let mut monomer_type: Option<MonomerType> = None;
-        let mut monomer_type_desc: Option<String> = None;
+        let mut hor: Option<MonomerHOR> = None;
+        let mut hor_desc: Option<String> = None;
         let mut status: Option<Status> = None;
 
         // TODO: Bookkeeping for position.
@@ -93,7 +93,7 @@ impl FromStr for Monomer {
                     };
                     let mut mtype = String::from_iter(mtype_vals);
                     mtype.insert(0, 'H');
-                    monomer_type = Some(MonomerType::from_str(&mtype)?);
+                    hor = Some(MonomerHOR::from_str(&mtype)?);
 
                     // Hyphen found. Is commented.
                     let Some(_) = tokens_iter.next_if(|(tk, _)| *tk == Token::Hyphen) else {
@@ -109,7 +109,7 @@ impl FromStr for Monomer {
                     }) {
                         monomer_desc.push(desc_token.char());
                     }
-                    monomer_type_desc = (!monomer_desc.is_empty()).then_some(monomer_desc);
+                    hor_desc = (!monomer_desc.is_empty()).then_some(monomer_desc);
                 }
                 Token::Hyphen | Token::Number | Token::Chimera => {
                     bail!(
@@ -127,9 +127,8 @@ impl FromStr for Monomer {
             monomers,
             suprachromosomal_family,
             chromosomes,
-            monomer_type: monomer_type
-                .with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
-            monomer_type_desc,
+            hor: hor.with_context(|| format!("Invalid monomer, {s}. Monomer type is required."))?,
+            hor_desc,
             status,
             strand: None,
         })
@@ -139,7 +138,7 @@ impl FromStr for Monomer {
 #[cfg(test)]
 mod test {
     use crate::monomer::{
-        chrom::Chromosome, mon::Monomer, mon_type::MonomerType, sf::SF, status::Status,
+        chrom::Chromosome, mon::Monomer, mon_type::MonomerHOR, sf::SF, status::Status,
     };
 
     #[test]
@@ -160,8 +159,8 @@ mod test {
                 monomers: vec![46],
                 suprachromosomal_family: vec![SF::SF4],
                 chromosomes: vec![Chromosome::CY],
-                monomer_type: MonomerType::H1,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H1,
+                hor_desc: None,
                 status: Some(Status::Live),
                 strand: None,
             },
@@ -177,8 +176,8 @@ mod test {
                 monomers: vec![2],
                 suprachromosomal_family: vec![SF::SF1],
                 chromosomes: vec![Chromosome::C16],
-                monomer_type: MonomerType::H1,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H1,
+                hor_desc: None,
                 status: Some(Status::Live),
                 strand: None,
             },
@@ -194,8 +193,8 @@ mod test {
                 monomers: vec![11],
                 suprachromosomal_family: vec![SF::SF4],
                 chromosomes: vec![Chromosome::C20],
-                monomer_type: MonomerType::H7,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H7,
+                hor_desc: None,
                 status: None,
                 strand: None,
             },
@@ -211,8 +210,8 @@ mod test {
                 monomers: vec![1],
                 suprachromosomal_family: vec![SF::SF5],
                 chromosomes: vec![Chromosome::C1],
-                monomer_type: MonomerType::H6,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H6,
+                hor_desc: None,
                 status: Some(Status::Divergent),
                 strand: None,
             },
@@ -228,8 +227,8 @@ mod test {
                 monomers: vec![3, 1],
                 suprachromosomal_family: vec![SF::SF2],
                 chromosomes: vec![Chromosome::C2],
-                monomer_type: MonomerType::H1,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H1,
+                hor_desc: None,
                 status: Some(Status::Live),
                 strand: None,
             },
@@ -246,8 +245,8 @@ mod test {
                 monomers: vec![4],
                 suprachromosomal_family: vec![SF::SF3],
                 chromosomes: vec![Chromosome::C1],
-                monomer_type: MonomerType::H2,
-                monomer_type_desc: Some(String::from("B")),
+                hor: MonomerHOR::H2,
+                hor_desc: Some(String::from("B")),
                 status: None,
                 strand: None,
             },
@@ -258,8 +257,8 @@ mod test {
                 monomers: vec![6],
                 suprachromosomal_family: vec![SF::SF2],
                 chromosomes: vec![Chromosome::C2],
-                monomer_type: MonomerType::H2,
-                monomer_type_desc: Some(String::from("C")),
+                hor: MonomerHOR::H2,
+                hor_desc: Some(String::from("C")),
                 status: None,
                 strand: None,
             },
@@ -275,8 +274,8 @@ mod test {
                 monomers: vec![6, 4],
                 suprachromosomal_family: vec![SF::SF1],
                 chromosomes: vec![Chromosome::C1, Chromosome::C5, Chromosome::C19],
-                monomer_type: MonomerType::H1,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H1,
+                hor_desc: None,
                 status: Some(Status::Live),
                 strand: None,
             },
@@ -292,8 +291,8 @@ mod test {
                 monomers: vec![17],
                 suprachromosomal_family: vec![SF::SF01, SF::SF1],
                 chromosomes: vec![Chromosome::C3],
-                monomer_type: MonomerType::H1,
-                monomer_type_desc: None,
+                hor: MonomerHOR::H1,
+                hor_desc: None,
                 status: Some(Status::Live),
                 strand: None,
             },
