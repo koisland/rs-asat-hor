@@ -11,7 +11,7 @@ use super::{chrom::Chromosome, mon_type::MonomerType, ord::Strand, sf::SF, statu
 ///
 /// let mon = Monomer::new("S1C16H1L.2");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Monomer {
     pub monomers: Vec<u8>,
     pub suprachromosomal_family: Vec<SF>,

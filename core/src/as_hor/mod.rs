@@ -1,3 +1,4 @@
+mod dbg;
 mod hor;
 mod parse;
 mod token;

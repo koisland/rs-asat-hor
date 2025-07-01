@@ -2,7 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use eyre::bail;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Chromosome {
     C1,
     C2,

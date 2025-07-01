@@ -4,7 +4,7 @@ use eyre::bail;
 
 use super::Monomer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Strand {
     Plus,
     Minus,

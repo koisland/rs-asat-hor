@@ -5,6 +5,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+dot-structures = "0.1.2"
+graphviz-rust = "0.9.5"
 eyre = "0.6.12"
 itertools = "0.14.0"
 log = "0.4.25"
