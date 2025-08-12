@@ -1,6 +1,7 @@
 mod dbg;
 mod hor;
 mod parse;
+mod sfx;
 mod token;
 
 pub use hor::{MonomerUnit, HOR};

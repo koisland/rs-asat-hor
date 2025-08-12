@@ -1,10 +1,12 @@
 /// Based on Ben Langmead's implementation
 /// * https://colab.research.google.com/github/BenLangmead/comp-genomics-class/blob/master/notebooks/CG_deBruijn.ipynb#scrollTo=E3sblU0B8W0n
 use std::{
-    collections::HashMap,
+    collections::{BinaryHeap, HashMap, HashSet},
     fmt::{Debug, Display},
     hash::Hash,
 };
+
+use eyre::bail;
 
 /// Edge mapping left node id to right node ids
 type Edges = HashMap<usize, Vec<usize>>;
@@ -56,12 +58,32 @@ impl<'a, T> Node<'a, T> {
 pub struct Dbg<'a, T: PartialEq + Eq + Hash, const N: usize> {
     nodes: Nodes<'a, T>,
     node_ids: NodeIDs<'a, T>,
+    node_counts: HashMap<&'a [T], usize>,
     edges: Edges,
     nsemi: usize,
     nbal: usize,
     nneither: usize,
     head: Option<usize>,
     tail: Option<usize>,
+}
+#[derive(Debug, PartialEq, Eq)]
+struct NodeCount<'a, T>(&'a [T], usize);
+
+impl<'a, T> Ord for NodeCount<'a, T>
+where
+    T: PartialEq + Eq,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.1.cmp(&other.1)
+    }
+}
+impl<'a, T> PartialOrd for NodeCount<'a, T>
+where
+    T: PartialEq + Eq,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.1.cmp(&other.1))
+    }
 }
 
 impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
@@ -75,8 +97,14 @@ impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
         let mut node_ids: NodeIDs<T> = HashMap::new();
         let mut edges: Edges = HashMap::new();
         let mut n_node_ids = 0;
+        let mut node_counts = HashMap::new();
 
-        for (_elem, elem_1l, elem_1r) in Dbg::<T, N>::chop(elems) {
+        for (elem, elem_1l, elem_1r) in Dbg::<T, N>::chop(elems) {
+            node_counts
+                .entry(elem_1l)
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+
             let node_id_l = {
                 let node_l = nodes.entry(elem_1l).or_insert_with(|| {
                     n_node_ids += 1;
@@ -98,7 +126,7 @@ impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
 
             edges
                 .entry(node_id_l)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(node_id_r);
         }
 
@@ -127,6 +155,7 @@ impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
             nodes,
             edges,
             node_ids,
+            node_counts,
             nsemi,
             nbal,
             nneither,
@@ -157,6 +186,60 @@ impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
     fn is_eulerian(&self) -> bool {
         // technically, if it has an Eulerian walk
         self.has_eulerian_walk() || self.has_eulerian_cycle()
+    }
+
+    fn find_cycles(&self) -> eyre::Result<Vec<Vec<usize>>> {
+        // Iterate from largest node and greedily take next.
+        // Similar to SRF's algo but we're operating at the monomer scale.
+        let mut node_counts =
+            BinaryHeap::from_iter(self.node_counts.iter().map(|nc| NodeCount(nc.0, *nc.1)));
+        const MIN_OCC: usize = 2;
+
+        let mut searches = vec![];
+        while let Some(mut curr_node) = node_counts
+            .pop()
+            .and_then(|node| {
+                node.1
+                    .gt(&MIN_OCC)
+                    .then(|| self.nodes.get(node.0))
+                    .flatten()
+            })
+            .map(|node| node.id)
+        {
+            let starting_node = curr_node;
+            let mut search = vec![];
+            let mut is_cycle = false;
+            let mut traveled_nodes = HashSet::new();
+
+            while let Some(next_node) = self.edges
+                .get(&curr_node)
+                .and_then(|choices|
+                    // Choose the largest occuring node at a bifurcation in graph.
+                    choices.iter()
+                    .filter(|node| **node == starting_node || !traveled_nodes.contains(node))
+                    .max_by(|node_a, node_b|
+                        self.node_counts[self.node_ids[node_a]].cmp(&self.node_counts[self.node_ids[node_b]])
+                    )
+                ) {
+                    // Track traveled nodes.
+                    traveled_nodes.insert(next_node);
+
+                    // Hit end of cycle.
+                    if *next_node == starting_node {
+                        search.push(*next_node);
+                        is_cycle = true;
+                        break;
+                    }
+                    curr_node = *next_node;
+                    search.push(*next_node);
+                }
+
+            if is_cycle {
+                searches.push(search);
+            }
+        }
+
+        Ok(searches)
     }
 
     // fn eularian_walk_or_cycle(&self) -> Option<Vec<[&T; N]>> {
@@ -209,17 +292,15 @@ impl<'a, T: PartialEq + Eq + Hash + Debug, const N: usize> Dbg<'a, T, N> {
                 .collect(),
         )
     }
-
-    // Similar approach to SRF. Find largest and collapse down.
-    // https://arxiv.org/pdf/2304.09729
-    fn find_cycles(&self) {
-        todo!()
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use std::{
+        collections::HashMap,
+        fs::File,
+        io::{BufWriter, Write},
+    };
 
     use dot_structures::*;
     use graphviz_rust::printer::{DotPrinter, PrinterContext};
@@ -227,15 +308,10 @@ mod test {
 
     use crate::{as_hor::dbg::Dbg, HOR};
 
-    fn hor_repeating() -> HOR {
+    fn hor_repeating() -> Vec<String> {
         const HOR: &str = "S2C4H1L.5-14_8-9_3-14_8-9_3-14_8-14_8-9_3-14_8-9_3-14_8-9_3-14_8-9_3-14_8-10_4-14_8-9_3-14_8-14_8-9_3-14_8-9_3-14_8-9_3-14_8-9_3-14_8-9_3-19";
-        HOR::new(HOR).unwrap()
-    }
-
-    #[test]
-    fn test_eularian_walk_cycle() {
-        let rep_hor = hor_repeating();
-        let monomers = rep_hor
+        HOR::new(HOR)
+            .unwrap()
             .monomers()
             .iter()
             .map(|m| {
@@ -243,27 +319,27 @@ mod test {
                 mon.push('_');
                 mon
             })
-            .collect_vec();
-        let dbg = Dbg::<String, 7>::new(&monomers);
-        let res = dbg.eularian_walk_or_cycle().unwrap();
-        for elem in res {
-            println!("{:?}", elem.into_iter().join("").trim_end_matches('_'))
-        }
+            .collect_vec()
     }
+
+    // #[test]
+    // fn test_eularian_walk_cycle() {
+    //     let monomers = hors_cen();
+    //     // let monomers = hor_repeating();
+    //     let dbg = Dbg::<String, 7>::new(&monomers);
+    //     let res = dbg.eularian_walk_or_cycle().unwrap();
+    //     println!(
+    //         "{:?}",
+    //         res.iter().map(|e| e.join("")).collect_vec()
+    //     )
+    // }
 
     #[test]
     fn test_print_dot() {
-        let rep_hor = hor_repeating();
-        let monomers = rep_hor
-            .monomers()
-            .iter()
-            .map(|m| {
-                let mut mon = m.monomers.iter().join("/");
-                mon.push('_');
-                mon
-            })
-            .collect_vec();
-        let dbg = Dbg::<String, 6>::new(&monomers);
+        let monomers = hor_repeating();
+        let dbg = Dbg::<String, 10>::new(&monomers);
+
+        // let mut writer = BufWriter::new(File::create("out.dot").unwrap());
         let mut dot_dbg = Graph::DiGraph {
             id: Id::Plain("DBG".to_owned()),
             strict: true,
@@ -271,6 +347,9 @@ mod test {
         };
         for node_id in dbg.edges.keys() {
             let node = dbg.node_ids[node_id];
+            if dbg.node_counts.get(node) < Some(&20) {
+                continue;
+            }
             let node_str = format!("\"{}\"", node.join("").trim_end_matches('_'));
             dot_dbg.add_stmt(Stmt::Node(Node::new(
                 NodeId(Id::Plain(node_str.clone()), None),
@@ -284,7 +363,7 @@ mod test {
             for dst in dsts {
                 wt_map.entry(*dst).and_modify(|c| *c += 1).or_insert(1);
             }
-            for (dst_node_id, dst_node_wt) in wt_map.iter() {
+            for (dst_node_id, dst_node_wt) in wt_map.iter().filter(|(a, b)| **b > 20) {
                 let dst_node = dbg.node_ids[dst_node_id];
                 let dst_node_str = format!("\"{}\"", dst_node.join("").trim_end_matches('_'));
                 dot_dbg.add_stmt(Stmt::Edge(Edge {
@@ -303,6 +382,6 @@ mod test {
         let mut ctx = PrinterContext::default();
         ctx.with_indent_step(4);
         let dot_dbg_str = dot_dbg.print(&mut ctx);
-        println!("{dot_dbg_str}")
+        // writeln!(&mut writer, "{}", dot_dbg_str).unwrap();
     }
 }
